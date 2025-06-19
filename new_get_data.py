@@ -921,19 +921,44 @@ if __name__ == '__main__':
 
         overseas_overduce,age_30,age_46,age_91,age_181,age_271,age_365 = [0,0,0,0,0,0,0]
 
-        # 海外仓超期
-        for info in df_sheet_overseas:
-            info = dict(info).get('fields')
-            asin_overduce = info['asin'][0]['text']
-            if asin == asin_overduce:
-                age_30 = int(info['30-45天'])
-                age_46 = int(info['46-90天'])
-                age_91 = int(info['91-180天'])
-                age_181 = int(info['181-270天'])
-                age_271 = int(info['271-365天'])
-                age_365 = int(info['365+天数'])
-                overseas_overduce = age_30 + age_46 + age_91 + age_181 + age_271 + age_365
+        # 新增：从MySQL视图'库龄明细'读取海外仓超期数据（去掉库龄20-30）
+        def get_overseas_age_from_db(asin, cursor):
+            sql = ("SELECT `ASIN`, `在库数量`, `库龄31-45`, `库龄46-90`, `库龄91-180`, `库龄181-270`, `库龄271-365`, `库龄365以上` "
+                   "FROM `库龄明细` WHERE `ASIN` = %s LIMIT 1")
+            cursor.execute(sql, (asin,))
+            row = cursor.fetchone()
+            if row:
+                return (
+                    int(row.get('在库数量', 0)),
+                    int(row.get('库龄31-45', 0)),
+                    int(row.get('库龄46-90', 0)),
+                    int(row.get('库龄91-180', 0)),
+                    int(row.get('库龄181-270', 0)),
+                    int(row.get('库龄271-365', 0)),
+                    int(row.get('库龄365以上', 0))
+                )
+            else:
+                return (0,0,0,0,0,0,0)
 
+        # 在主循环外建立数据库连接和cursor
+        conn_overseas = mysql.connector.connect(
+            host="rm-bp1a33e3ww3pdfcnvso.mysql.rds.aliyuncs.com",
+            user="Blaise",
+            password="Libo20020627!",
+            database="eastoak_inventory"
+        )
+        cursor_overseas = conn_overseas.cursor(dictionary=True)
+
+        # 调用新函数获取数据
+        overseas_age_data = get_overseas_age_from_db(asin, cursor_overseas)
+        overseas_overduce = overseas_age_data[0]
+        age_30 = overseas_age_data[1]
+        age_46 = overseas_age_data[2]
+        age_91 = overseas_age_data[3]
+        age_181 = overseas_age_data[4]
+        age_271 = overseas_age_data[5]
+        age_365 = overseas_age_data[6]
+        # 如需库龄365以上，可用overseas_age_data[6]
 
         inventory_all = int(
             int(Sellable_Units) + saleAvailableTotal_all + shipping_do + qty_outstanding_all_do + qty_outstanding_all_di_on_ship
@@ -998,3 +1023,7 @@ if __name__ == '__main__':
 
         # 有新asin时打开，否则关闭
         # mysql_input(data_part)
+
+    # 主循环结束后关闭cursor和连接
+    cursor_overseas.close()
+    conn_overseas.close()
